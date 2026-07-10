@@ -34,6 +34,10 @@ return [
     |--------------------------------------------------------------------------
     | Per-attempt timeout (seconds)
     |--------------------------------------------------------------------------
+    |
+    | Expressed in SECONDS, following Laravel's Http client convention. (The
+    | Node SDK's `timeout` is milliseconds — this one is not.)
+    |
     */
 
     'timeout' => (int) env('IONHOUR_TIMEOUT', 10),
