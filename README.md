@@ -171,7 +171,17 @@ docker run --rm -v "$PWD":/app -w /app composer:2 \
 
 ## Documentation
 
-Full docs at [docs.ionhour.com](https://docs.ionhour.com).
+## Base URL
+
+The default `base_url` is `https://signal.ionhour.com/api`, the dedicated
+heartbeat-ingest host. Set `IONHOUR_BASE_URL=https://api.ionhour.com/api` to
+send pings through the main API host instead; it serves every ping route
+(`/ping/{token}`, `/fail`, `/start`) and is the right choice when you also use
+failure or start pings and your deployment has not yet enabled them on the
+signal host.
+
+Full docs at [docs.ionhour.com](https://docs.ionhour.com). Machine-readable index
+for AI agents: <https://ionhour.com/llms.txt>.
 
 ## License
 
