@@ -13,8 +13,8 @@
     "license": "MIT",
     "type": "library",
     "support": {
-        "issues": "https://github.com/ionhour/laravel/issues",
-        "source": "https://github.com/ionhour/laravel",
+        "issues": "https://github.com/ionhour/laravel-sdk/issues",
+        "source": "https://github.com/ionhour/laravel-sdk",
         "docs": "https://docs.ionhour.com"
     },
     "authors": [
