@@ -50,16 +50,6 @@ final class SchedulerMacroTest extends TestCase
         Http::assertSentCount(1);
     }
 
-    public function test_macro_forwards_api_key_to_the_ping(): void
-    {
-        $event = $this->newScheduledEvent()->pingIonhour('tok_sched', 'ionh_sched');
-
-        $event->exitCode = 0;
-        $event->callAfterCallbacks($this->app);
-
-        Http::assertSent(fn ($request) => $request->hasHeader('Authorization', 'Bearer ionh_sched'));
-    }
-
     public function test_register_job_used_by_macro_still_returns_a_job(): void
     {
         // Sanity: the macro relies on the same registration surface consumers use.

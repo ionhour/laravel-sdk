@@ -31,9 +31,9 @@ This package is that same ping with the retries, timeouts, and failure
 signaling handled for you — plus scheduler integration and an error philosophy
 where a monitoring outage never takes down your app.
 
-The shortest path needs no client construction: credentials and base URL come
-from `IONHOUR_*` env, and the token-first facade methods register the job for
-you.
+The shortest path needs no client construction: the base URL, timeout and
+retries come from `IONHOUR_*` env, and the token-first facade methods register
+the job for you.
 
 ```php
 use Ionhour\Laravel\Facades\Ionhour;
@@ -49,13 +49,6 @@ $report = Ionhour::run('your-job-token', fn () => runNightlyReport());
 Ionhour::fail('your-job-token', ['payload' => ['error' => 'database unreachable']]);
 ```
 
-For protected jobs, pass a workspace API key via the `api_key` option; a blank
-key falls back to the configured `IONHOUR_API_KEY`:
-
-```php
-Ionhour::success('your-job-token', ['api_key' => 'ionh_xxx']);
-```
-
 ### Scheduled commands
 
 Attach a heartbeat to any scheduled command. Ionhour receives a **success** ping
@@ -66,11 +59,6 @@ when the command exits `0`, and a **fail** ping otherwise:
 $schedule->command('backup:run')
     ->daily()
     ->pingIonhour('your-job-token');
-
-// Protected job — pass a workspace API key as the second argument:
-$schedule->command('reports:build')
-    ->hourly()
-    ->pingIonhour('reports-token', config('services.ionhour.key'));
 ```
 
 ### Reusing a job handle
@@ -79,7 +67,7 @@ When you ping the same job repeatedly, register it once and keep the handle. The
 token-first methods above are thin wrappers over this:
 
 ```php
-$job = Ionhour::registerJob('your-job-token');       // optional 2nd arg: per-job API key
+$job = Ionhour::registerJob('your-job-token');
 
 $job->start(['rid' => 'run-42']);                    // optional run-started ping
 $job->success(['rid' => 'run-42', 'payload' => ['rows' => 1200]]);
@@ -95,19 +83,16 @@ Registration is **local** — it performs no network call and validates the toke
 Add to your `.env`:
 
 ```dotenv
-IONHOUR_API_KEY=ionh_xxx            # optional — only for protected jobs
 IONHOUR_BASE_URL=https://signal.ionhour.com/api
 ```
 
 | Option     | Env                | Default                          | Notes                                                        |
 |------------|--------------------|----------------------------------|--------------------------------------------------------------|
-| `api_key`  | `IONHOUR_API_KEY`  | `null`                           | Global default; only needed for protected jobs. A per-job key overrides it. |
 | `base_url` | `IONHOUR_BASE_URL` | `https://signal.ionhour.com/api` | Signals ingest endpoint.                                     |
 | `timeout`  | `IONHOUR_TIMEOUT`  | `10`                             | Per-attempt timeout, in **seconds** (the Node SDK's `timeout` is milliseconds — this one is not). |
 | `retries`  | `IONHOUR_RETRIES`  | `3`                              | Total attempts. Backoff 1s/2s. Retries only on connection errors, 429, 5xx. |
 
-> The `apiKey` is **only** required for protected jobs. For unprotected jobs the
-> token *is* the credential; sending a key anyway is always safe.
+> The job token *is* the credential. Pings send no `Authorization` header.
 
 ### Ping options
 
@@ -119,7 +104,6 @@ IONHOUR_BASE_URL=https://signal.ionhour.com/api
 | `env`         | string  | Environment name (`?env=`). Silently truncated over 32 chars. |
 | `exit_code`   | int     | Process exit code (`?exit_code=`). Must be an integer 0–255, or a usage error is thrown. |
 | `payload`     | array   | JSON body (max 10 KiB). Sends `POST` when present, otherwise `GET`. |
-| `api_key`     | string  | Per-job workspace API key (token-first methods only). Blank falls back to the configured key. |
 
 `host`, `env`, and `exit_code` are telemetry the server persists but never
 auto-detects — pass them explicitly. The server drops invalid `host`/`env`/`rid`

@@ -19,7 +19,6 @@ final class IonhourServiceProvider extends ServiceProvider
 
             return new IonhourManager(
                 baseUrl: rtrim((string) ($config['base_url'] ?? 'https://signal.ionhour.com/api'), '/'),
-                apiKey: $config['api_key'] ?? null,
                 timeout: (int) ($config['timeout'] ?? 10),
                 retries: (int) ($config['retries'] ?? 3),
             );
@@ -40,7 +39,7 @@ final class IonhourServiceProvider extends ServiceProvider
     }
 
     /**
-     * Add `->pingIonhour($token, $apiKey?)` to scheduled events so a scheduled
+     * Add `->pingIonhour($token)` to scheduled events so a scheduled
      * command pings success on exit code 0 and fail otherwise.
      */
     private function registerSchedulerMacro(): void
@@ -49,14 +48,14 @@ final class IonhourServiceProvider extends ServiceProvider
             return;
         }
 
-        Event::macro('pingIonhour', function (string $token, ?string $apiKey = null) {
+        Event::macro('pingIonhour', function (string $token) {
             /** @var Event $this */
-            $this->onSuccess(function () use ($token, $apiKey): void {
-                app(IonhourManager::class)->registerJob($token, $apiKey)->success();
+            $this->onSuccess(function () use ($token): void {
+                app(IonhourManager::class)->registerJob($token)->success();
             });
 
-            $this->onFailure(function () use ($token, $apiKey): void {
-                app(IonhourManager::class)->registerJob($token, $apiKey)->fail();
+            $this->onFailure(function () use ($token): void {
+                app(IonhourManager::class)->registerJob($token)->fail();
             });
 
             return $this;

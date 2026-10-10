@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Ionhour\Laravel\Tests;
 
 use Illuminate\Support\Facades\Http;
-use InvalidArgumentException;
 use Ionhour\Laravel\Facades\Ionhour;
 use RuntimeException;
 
@@ -95,31 +94,6 @@ final class FacadeConvenienceTest extends TestCase
             && ($request['error'] ?? null) === 'kaboom');
     }
 
-    public function test_per_job_api_key_option_sets_authorization_header(): void
-    {
-        config()->set('ionhour.api_key', 'ionh_config');
-
-        Ionhour::success('tok_123', ['api_key' => 'ionh_perjob']);
-
-        Http::assertSent(fn ($request) => $request->hasHeader('Authorization', 'Bearer ionh_perjob'));
-    }
-
-    public function test_blank_api_key_option_falls_back_to_configured_key(): void
-    {
-        config()->set('ionhour.api_key', 'ionh_config');
-
-        Ionhour::success('tok_123', ['api_key' => '   ']);
-
-        Http::assertSent(fn ($request) => $request->hasHeader('Authorization', 'Bearer ionh_config'));
-    }
-
-    public function test_run_honors_per_job_api_key_option(): void
-    {
-        Ionhour::run('tok_123', fn () => null, ['api_key' => 'ionh_run']);
-
-        Http::assertSent(fn ($request) => $request->hasHeader('Authorization', 'Bearer ionh_run'));
-    }
-
     public function test_success_does_not_leak_api_key_into_query_or_payload(): void
     {
         Ionhour::success('tok_123', ['api_key' => 'ionh_secret', 'payload' => ['ok' => true]]);
@@ -144,22 +118,15 @@ final class FacadeConvenienceTest extends TestCase
         $this->assertApiKeyNotLeaked();
     }
 
-    public function test_non_string_api_key_option_is_rejected(): void
-    {
-        $this->expectException(InvalidArgumentException::class);
-
-        // @phpstan-ignore-next-line — deliberately wrong type to exercise the guard.
-        Ionhour::success('tok_123', ['api_key' => 1234]);
-    }
-
     /**
-     * The per-job API key travels only as the Authorization header — never as a
-     * query param or JSON body field on any sent request.
+     * A legacy `api_key` option is ignored entirely: it never travels as a
+     * query param, a JSON body field, or an Authorization header.
      */
     private function assertApiKeyNotLeaked(): void
     {
         Http::assertSent(fn ($request) => ! str_contains($request->url(), 'ionh_secret')
             && ! str_contains($request->url(), 'api_key')
             && ($request['api_key'] ?? null) === null);
+        Http::assertNotSent(fn ($request) => $request->hasHeader('Authorization'));
     }
 }

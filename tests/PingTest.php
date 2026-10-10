@@ -85,53 +85,22 @@ final class PingTest extends TestCase
             && str_contains($request->url(), 'duration=1234'));
     }
 
-    public function test_per_job_api_key_overrides_config_key(): void
+    public function test_never_sends_an_authorization_header(): void
     {
-        config()->set('ionhour.api_key', 'ionh_config');
+        // Protected jobs are not enforced yet (spec 027), so pings carry no
+        // credential beyond the token in the path. A stale `api_key` left in a
+        // previously published config file, or a legacy second argument to
+        // registerJob(), must never turn into a Bearer header.
+        config()->set('ionhour.api_key', 'ionh_stale_config_key');
 
-        Ionhour::registerJob('tok_123', 'ionh_perjob')->success();
+        // @phpstan-ignore-next-line — legacy two-argument call, deliberately.
+        $job = Ionhour::registerJob('tok_123', 'ionh_legacy_arg');
+        $job->success();
+        $job->fail();
+        $job->start();
 
-        Http::assertSent(fn ($request) => $request->hasHeader('Authorization', 'Bearer ionh_perjob'));
-    }
-
-    public function test_config_api_key_used_when_no_per_job_key(): void
-    {
-        config()->set('ionhour.api_key', 'ionh_config');
-
-        Ionhour::registerJob('tok_123')->success();
-
-        Http::assertSent(fn ($request) => $request->hasHeader('Authorization', 'Bearer ionh_config'));
-    }
-
-    public function test_no_authorization_header_when_no_key_is_set(): void
-    {
-        Ionhour::registerJob('tok_123')->success();
-
-        Http::assertSent(fn ($request) => ! $request->hasHeader('Authorization'));
-    }
-
-    public function test_whitespace_padded_per_job_key_is_trimmed_in_header(): void
-    {
-        Ionhour::registerJob('tok_123', " ionh_padded\n")->success();
-
-        Http::assertSent(fn ($request) => $request->hasHeader('Authorization', 'Bearer ionh_padded'));
-    }
-
-    public function test_whitespace_padded_config_key_is_trimmed_in_header(): void
-    {
-        config()->set('ionhour.api_key', "  ionh_cfg\t");
-
-        Ionhour::registerJob('tok_123')->success();
-
-        Http::assertSent(fn ($request) => $request->hasHeader('Authorization', 'Bearer ionh_cfg'));
-    }
-
-    public function test_whitespace_only_key_sends_no_authorization_header(): void
-    {
-        // A whitespace-only key (from either source) is treated as absent.
-        Ionhour::registerJob('tok_123', "   ")->success();
-
-        Http::assertSent(fn ($request) => ! $request->hasHeader('Authorization'));
+        Http::assertSentCount(3);
+        Http::assertNotSent(fn ($request) => $request->hasHeader('Authorization'));
     }
 
     public function test_url_unsafe_token_is_percent_encoded_in_path(): void

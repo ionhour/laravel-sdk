@@ -37,7 +37,6 @@ final class Job
 
     public function __construct(
         private readonly string $token,
-        private readonly ?string $apiKey,
         private readonly string $baseUrl,
         private readonly int $timeout,
         private readonly int $retries,
@@ -45,8 +44,8 @@ final class Job
     }
 
     /**
-     * Redact the ping token and key so var_dump()/dd()/print_r() output never
-     * leaks credentials into logs. NOTE: __debugInfo() is honored by var_dump()
+     * Redact the ping token so var_dump()/dd()/print_r() output never leaks the
+     * credential into logs. NOTE: __debugInfo() is honored by var_dump()
      * and Symfony's dump()/dd() (what Laravel exposes); print_r() and
      * var_export() ignore it — a PHP-level limitation, not something a class
      * can override.
@@ -57,7 +56,6 @@ final class Job
     {
         return [
             'token' => '<redacted>',
-            'apiKey' => $this->apiKey === null ? null : '<redacted>',
             'baseUrl' => $this->baseUrl,
             'timeout' => $this->timeout,
             'retries' => $this->retries,
@@ -315,7 +313,7 @@ final class Job
 
     private function request(): PendingRequest
     {
-        $request = Http::withUserAgent(self::USER_AGENT)
+        return Http::withUserAgent(self::USER_AGENT)
             ->timeout($this->timeout)
             ->retry(
                 max(1, $this->retries),
@@ -323,12 +321,6 @@ final class Job
                 fn (Throwable $e): bool => $this->shouldRetry($e),
                 false,
             );
-
-        if ($this->apiKey !== null && $this->apiKey !== '') {
-            $request = $request->withToken($this->apiKey);
-        }
-
-        return $request;
     }
 
     /**
@@ -368,7 +360,7 @@ final class Job
 
     /**
      * A short, non-reversible prefix of the ping token for log attribution. The
-     * token IS the credential for unprotected jobs, so the automatic failure
+     * token IS the job's credential, so the automatic failure
      * logger must never write it in full — at most 8 characters, and never more
      * than half the token, per the SDK contract.
      */

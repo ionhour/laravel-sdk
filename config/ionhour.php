@@ -6,20 +6,6 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Workspace API key
-    |--------------------------------------------------------------------------
-    |
-    | Optional. Only needed for PROTECTED jobs. When set it is sent as
-    | `Authorization: Bearer <key>` on every ping. A per-job key passed to
-    | registerJob() overrides this global default. Leave null for unprotected
-    | jobs — sending a key is always safe (the backend ignores it for those).
-    |
-    */
-
-    'api_key' => env('IONHOUR_API_KEY'),
-
-    /*
-    |--------------------------------------------------------------------------
     | Base URL
     |--------------------------------------------------------------------------
     |

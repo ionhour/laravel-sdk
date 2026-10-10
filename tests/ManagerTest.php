@@ -50,7 +50,7 @@ final class ManagerTest extends TestCase
         $this->assertSame(self::BASE, config('ionhour.base_url'));
         $this->assertSame(10, config('ionhour.timeout'));
         $this->assertSame(3, config('ionhour.retries'));
-        $this->assertNull(config('ionhour.api_key'));
+        $this->assertArrayNotHasKey('api_key', config('ionhour'));
     }
 
     public function test_config_is_publishable_under_its_tag(): void
