@@ -8,6 +8,7 @@ use Closure;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\RequestException;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use InvalidArgumentException;
@@ -35,12 +36,50 @@ final class Job
     /** User-Agent sent on every request. */
     public const USER_AGENT = 'ionhour-php/0.1.0';
 
+    /** Shape of a server error `code` worth surfacing in PingResult->error. */
+    private const ERROR_CODE_PATTERN = '/^[A-Z][A-Z0-9_]{0,63}$/D';
+
+    /**
+     * Token jobs set `$token`; slug jobs (see {@see forSlug()}) set `$slug` and
+     * `$apiKey`, and `$baseUrl` is the API host.
+     */
     public function __construct(
         private readonly string $token,
         private readonly string $baseUrl,
         private readonly int $timeout,
         private readonly int $retries,
+        private readonly ?string $slug = null,
+        #[\SensitiveParameter] private readonly ?string $apiKey = null,
+        private readonly bool $create = false,
     ) {
+    }
+
+    /**
+     * Build a slug-mode job. Validation happens in
+     * {@see IonhourManager::jobBySlug()}, the public entry point.
+     */
+    public static function forSlug(
+        string $slug,
+        #[\SensitiveParameter] string $apiKey,
+        bool $create,
+        string $apiBaseUrl,
+        int $timeout,
+        int $retries,
+    ): self {
+        return new self(
+            token: '',
+            baseUrl: $apiBaseUrl,
+            timeout: $timeout,
+            retries: $retries,
+            slug: $slug,
+            apiKey: $apiKey,
+            create: $create,
+        );
+    }
+
+    private function isSlug(): bool
+    {
+        return $this->slug !== null;
     }
 
     /**
@@ -54,6 +93,16 @@ final class Job
      */
     public function __debugInfo(): array
     {
+        if ($this->isSlug()) {
+            return [
+                'slug' => $this->slug,
+                'create' => $this->create,
+                'apiBaseUrl' => $this->baseUrl,
+                'timeout' => $this->timeout,
+                'retries' => $this->retries,
+            ];
+        }
+
         return [
             'token' => '<redacted>',
             'baseUrl' => $this->baseUrl,
@@ -185,13 +234,7 @@ final class Job
                 ? $this->request()->get($url)
                 : $this->request()->post($url, $body);
 
-            $result = new PingResult(
-                ok: $response->successful(),
-                status: $response->status(),
-                error: $response->successful()
-                    ? null
-                    : 'Ionhour ping returned HTTP '.$response->status(),
-            );
+            $result = $this->toResult($response);
         } catch (Throwable $e) {
             $result = new PingResult(ok: false, status: null, error: $this->scrubToken($e->getMessage()));
         }
@@ -201,6 +244,45 @@ final class Job
         }
 
         return $result;
+    }
+
+    /**
+     * Map a response to a PingResult. Slug routes add `created` (201 or a
+     * `created: true` body) and the error envelope's well-formed `code`.
+     */
+    private function toResult(Response $response): PingResult
+    {
+        $status = $response->status();
+        $body = $this->isSlug() ? $this->decodeBody($response) : [];
+
+        if ($response->successful()) {
+            return new PingResult(
+                ok: true,
+                status: $status,
+                created: $this->isSlug() && ($status === 201 || ($body['created'] ?? null) === true),
+            );
+        }
+
+        $code = $body['code'] ?? null;
+        $suffix = is_string($code) && preg_match(self::ERROR_CODE_PATTERN, $code) === 1 ? " ({$code})" : '';
+
+        return new PingResult(ok: false, status: $status, error: 'Ionhour ping returned HTTP '.$status.$suffix);
+    }
+
+    /**
+     * Best-effort JSON decode of a slug-route response; never throws.
+     *
+     * @return array<string, mixed>
+     */
+    private function decodeBody(Response $response): array
+    {
+        try {
+            $decoded = json_decode($response->body(), true);
+        } catch (Throwable) {
+            return [];
+        }
+
+        return is_array($decoded) ? $decoded : [];
     }
 
     /**
@@ -251,11 +333,15 @@ final class Job
 
     private function buildUrl(string $suffix, array $options): string
     {
-        $url = rtrim($this->baseUrl, '/')
-            .'/signals/ping/'.rawurlencode($this->token)
-            .$suffix;
+        $path = $this->isSlug()
+            ? '/signals/s/'.rawurlencode((string) $this->slug)
+            : '/signals/ping/'.rawurlencode($this->token);
+        $url = rtrim($this->baseUrl, '/').$path.$suffix;
 
         $query = $this->buildQuery($options);
+        if ($this->isSlug() && $this->create) {
+            $query = ['create' => '1'] + $query;
+        }
 
         return $query === [] ? $url : $url.'?'.http_build_query($query);
     }
@@ -313,7 +399,13 @@ final class Job
 
     private function request(): PendingRequest
     {
-        return Http::withUserAgent(self::USER_AGENT)
+        $request = Http::withUserAgent(self::USER_AGENT);
+        // Only slug pings carry a credential; token pings never send Authorization.
+        if ($this->isSlug()) {
+            $request = $request->withToken((string) $this->apiKey);
+        }
+
+        return $request
             ->timeout($this->timeout)
             ->retry(
                 max(1, $this->retries),
@@ -347,8 +439,12 @@ final class Job
     private function report(string $kind, PingResult $result): void
     {
         try {
-            Log::warning('Ionhour ping did not succeed.', [
-                'token' => $this->tokenPrefix(),
+            // A slug is not a credential; a token is logged as a prefix only.
+            $subject = $this->isSlug()
+                ? ['slug' => $this->slug]
+                : ['token' => $this->tokenPrefix()];
+
+            Log::warning('Ionhour ping did not succeed.', $subject + [
                 'kind' => $kind,
                 'status' => $result->status,
                 'error' => $result->error,
@@ -366,9 +462,15 @@ final class Job
      */
     private function tokenPrefix(): string
     {
-        $length = min(8, intdiv(strlen($this->token), 2));
+        return $this->prefixOf($this->token);
+    }
 
-        return substr($this->token, 0, $length).'…';
+    /** At most 8 characters and never more than half of a secret. */
+    private function prefixOf(string $secret): string
+    {
+        $length = min(8, intdiv(strlen($secret), 2));
+
+        return substr($secret, 0, $length).'…';
     }
 
     /**
@@ -382,6 +484,12 @@ final class Job
      */
     private function scrubToken(string $message): string
     {
+        // Slug jobs: the credential is the API key (sent as a header, which a
+        // careless transport or proxy may echo). Same prefix rule as tokens.
+        if ($this->isSlug()) {
+            return str_replace((string) $this->apiKey, $this->prefixOf((string) $this->apiKey), $message);
+        }
+
         $encoded = rawurlencode($this->token);
         $needles = $encoded === $this->token ? [$this->token] : [$this->token, $encoded];
 

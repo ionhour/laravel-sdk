@@ -18,6 +18,22 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Slug mode: API base URL and API key
+    |--------------------------------------------------------------------------
+    |
+    | Used ONLY by Ionhour::jobBySlug(). Slug pings go to the API host (not the
+    | signal host above) with the key as "Authorization: Bearer <key>". Token
+    | pings never send the key. Slug auto-provisioning is gated server-side by
+    | the `job_auto_provisioning` flag.
+    |
+    */
+
+    'api_base_url' => env('IONHOUR_API_BASE_URL', 'https://api.ionhour.com/api'),
+
+    'api_key' => env('IONHOUR_API_KEY'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Per-attempt timeout (seconds)
     |--------------------------------------------------------------------------
     |

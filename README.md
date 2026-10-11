@@ -49,6 +49,45 @@ $report = Ionhour::run('your-job-token', fn () => runNightlyReport());
 Ionhour::fail('your-job-token', ['payload' => ['error' => 'database unreachable']]);
 ```
 
+### Slug mode
+
+Address a job by a human-readable slug in your API key's workspace instead of
+by token, and optionally create it on the first ping. The curl equivalent:
+
+```bash
+curl -H "Authorization: Bearer $IONHOUR_API_KEY" \
+  "https://api.ionhour.com/api/signals/s/nightly-report?create=1"
+```
+
+```php
+// .env: IONHOUR_API_KEY=ionh_... (IONHOUR_API_BASE_URL defaults to https://api.ionhour.com/api)
+$job = Ionhour::jobBySlug('nightly-report', ['create' => true]);
+
+$result = $job->success(); // $result->created is true on the ping that created the job
+$job->run(fn () => runNightlyReport());
+```
+
+The returned `Job` has the same `success` / `fail` / `start` / `run` surface.
+Slug pings go to the **API host** with `Authorization: Bearer <key>`; token
+pings never send the key. `jobBySlug()` throws `InvalidArgumentException` for a
+slug outside `^[a-z0-9_-]{1,64}$`, a non-bool `create`, or when no API key is
+configured. A blank `api_key` in a published config file counts as absent; it
+does not fall back to `IONHOUR_API_KEY`.
+
+Scheduled commands get a slug twin of `->pingIonhour()`:
+
+```php
+$schedule->command('report:nightly')->daily()
+    ->pingIonhourBySlug('nightly-report', ['create' => true]);
+```
+
+If slug mode is unusable when the command finishes (for example no API key),
+the ping is skipped with a log warning instead of interrupting the scheduler.
+Auto-creation needs the server flag `job_auto_provisioning`, which is OFF by
+default; with it off a create ping returns
+`Ionhour ping returned HTTP 403 (FEATURE_DISABLED)` in `$result->error`. Slug
+4xx responses are never retried. 429 and 5xx use the usual backoff.
+
 ### Scheduled commands
 
 Attach a heartbeat to any scheduled command. Ionhour receives a **success** ping
@@ -91,8 +130,11 @@ IONHOUR_BASE_URL=https://signal.ionhour.com/api
 | `base_url` | `IONHOUR_BASE_URL` | `https://signal.ionhour.com/api` | Signals ingest endpoint.                                     |
 | `timeout`  | `IONHOUR_TIMEOUT`  | `10`                             | Per-attempt timeout, in **seconds** (the Node SDK's `timeout` is milliseconds — this one is not). |
 | `retries`  | `IONHOUR_RETRIES`  | `3`                              | Total attempts. Backoff 1s/2s. Retries only on connection errors, 429, 5xx. |
+| `api_base_url` | `IONHOUR_API_BASE_URL` | `https://api.ionhour.com/api` | Slug mode only. The API host that serves `/signals/s/{slug}`. |
+| `api_key`  | `IONHOUR_API_KEY`  | none                             | Slug mode only, sent as a Bearer header. Trimmed; blank counts as absent. Never shown by `var_dump`/`dd`. |
 
-> The job token *is* the credential. Pings send no `Authorization` header.
+> The job token *is* the credential. Token pings send no `Authorization`
+> header, even when `api_key` is set; only `jobBySlug()` jobs send the key.
 
 ### Ping options
 

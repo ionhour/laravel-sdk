@@ -12,16 +12,75 @@ use InvalidArgumentException;
  *
  * Bound as a singleton by {@see IonhourServiceProvider} and reached through the
  * {@see \Ionhour\Laravel\Facades\Ionhour} facade. Registration is local and
- * performs no network call. Pings authenticate by job token alone and never
- * send an Authorization header.
+ * performs no network call. Token pings authenticate by job token alone and
+ * never send an Authorization header; only slug-mode jobs
+ * ({@see jobBySlug()}) send the API key, to the API host.
  */
 final class IonhourManager
 {
+    /** Slugs the server accepts on /signals/s/{slug}. */
+    private const SLUG_PATTERN = '/^[a-z0-9_-]{1,64}$/D';
+
+    /** Trimmed slug-mode key, or null when absent/blank. Never dumped. */
+    private readonly ?string $apiKey;
+
     public function __construct(
         private readonly string $baseUrl,
         private readonly int $timeout,
         private readonly int $retries,
+        private readonly string $apiBaseUrl = 'https://api.ionhour.com/api',
+        #[\SensitiveParameter] ?string $apiKey = null,
     ) {
+        $trimmed = $apiKey === null ? '' : trim($apiKey);
+        $this->apiKey = $trimmed === '' ? null : $trimmed;
+    }
+
+    /**
+     * Register a Job by its slug in the workspace of the configured API key
+     * (slug mode). Pings go to `{api_base_url}/signals/s/{slug}` with
+     * `Authorization: Bearer <api_key>`; `['create' => true]` adds `?create=1`
+     * so the first ping auto-creates the job (server flag
+     * `job_auto_provisioning`, reported via {@see PingResult::$created}).
+     *
+     * @param  array{create?: bool}  $options
+     *
+     * @throws InvalidArgumentException on an invalid slug, a non-bool `create`,
+     *                                   or a missing/malformed API key.
+     */
+    public function jobBySlug(string $slug, array $options = []): Job
+    {
+        if (array_key_exists('create', $options) && ! is_bool($options['create'])) {
+            throw new InvalidArgumentException(
+                'Ionhour: the "create" option must be a bool (true or false).'
+            );
+        }
+
+        if (preg_match(self::SLUG_PATTERN, $slug) !== 1) {
+            throw new InvalidArgumentException(
+                'Ionhour: slug must match ^[a-z0-9_-]{1,64}$ (lowercase letters, digits, "_" and "-").'
+            );
+        }
+
+        if ($this->apiKey === null) {
+            throw new InvalidArgumentException(
+                'Ionhour: slug mode needs an API key. Set IONHOUR_API_KEY or the ionhour.api_key config value.'
+            );
+        }
+
+        if (preg_match('/[\s\x00-\x1f\x7f]/', $this->apiKey) === 1) {
+            throw new InvalidArgumentException(
+                'Ionhour: the API key must not contain whitespace or control characters.'
+            );
+        }
+
+        return Job::forSlug(
+            slug: $slug,
+            apiKey: $this->apiKey,
+            create: $options['create'] ?? false,
+            apiBaseUrl: $this->apiBaseUrl,
+            timeout: $this->timeout,
+            retries: $this->retries,
+        );
     }
 
     /**
@@ -122,6 +181,7 @@ final class IonhourManager
     {
         return [
             'baseUrl' => $this->baseUrl,
+            'apiBaseUrl' => $this->apiBaseUrl,
             'timeout' => $this->timeout,
             'retries' => $this->retries,
         ];

@@ -36,9 +36,25 @@ Initial release.
   truncated prefix.
 - GET/POST wire protocol with `rid` and `duration` query params, `/fail`
   suffix, and 10 KiB payload guard.
-- Heartbeat pings authenticate by job token alone and never send an
-  `Authorization` header; the config has no `api_key` entry. Protected jobs,
-  which require an API key on pings, will ship with their own option.
+- Token pings authenticate by job token alone and never send an
+  `Authorization` header, even with `api_key` set (it is slug-mode only).
+  Protected jobs, which require an API key on pings, will ship with their own
+  option.
+- Slug mode: `Ionhour::jobBySlug($slug, ['create' => true])`. Pings
+  `{api_base_url}/signals/s/{slug}` (`/fail`, `/start`) on the API host with
+  `Authorization: Bearer <key>`, adding `?create=1` when `create` is set. New
+  config `api_base_url` (`IONHOUR_API_BASE_URL`, default
+  `https://api.ionhour.com/api`) and `api_key` (`IONHOUR_API_KEY`, trimmed,
+  blank = absent; a blank config value does not fall back to the env). An
+  invalid slug, a non-bool `create`, or a missing key throws
+  `InvalidArgumentException`. API-key parameters carry
+  `#[\SensitiveParameter]`. Scheduler macro
+  `->pingIonhourBySlug($slug, $options)` mirrors `->pingIonhour()` and skips
+  with a warning when slug mode is unusable. `PingResult->created` reports auto-creation
+  (201), and slug error codes are appended to `PingResult->error`, e.g.
+  `HTTP 403 (KEY_SCOPE_DENIED)`. Slug 4xx are never retried, except 429. The
+  key is excluded from `__debugInfo`, scrubbed from transport-error text, and
+  the failure log names a slug job by its slug.
 - Automatic retries (3 attempts, 1s/2s backoff) limited to connection errors,
   HTTP 429, and 5xx.
 - Publishable `config/ionhour.php` (`php artisan vendor:publish --tag=ionhour-config`).

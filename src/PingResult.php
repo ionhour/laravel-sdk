@@ -17,6 +17,8 @@ final class PingResult
         public readonly bool $ok,
         public readonly ?int $status = null,
         public readonly ?string $error = null,
+        /** Slug mode only: true when this ping auto-created the job (HTTP 201). */
+        public readonly bool $created = false,
     ) {
     }
 }

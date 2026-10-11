@@ -9,6 +9,7 @@ use Ionhour\Laravel\IonhourManager;
 
 /**
  * @method static \Ionhour\Laravel\Job registerJob(string $jobToken)
+ * @method static \Ionhour\Laravel\Job jobBySlug(string $slug, array $options = [])
  * @method static \Ionhour\Laravel\PingResult success(string $jobToken, array $options = [])
  * @method static \Ionhour\Laravel\PingResult ping(string $jobToken, array $options = [])
  * @method static \Ionhour\Laravel\PingResult fail(string $jobToken, array $options = [])

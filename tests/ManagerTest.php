@@ -13,6 +13,20 @@ use InvalidArgumentException;
 
 final class ManagerTest extends TestCase
 {
+    /**
+     * The package config reads IONHOUR_* through env(). Clear the slug-mode
+     * variables before the app boots so these defaults never depend on the
+     * developer's or CI's real environment.
+     */
+    protected function setUp(): void
+    {
+        foreach (['IONHOUR_API_KEY', 'IONHOUR_API_BASE_URL'] as $name) {
+            putenv($name);
+            unset($_ENV[$name], $_SERVER[$name]);
+        }
+        parent::setUp();
+    }
+
     public function test_register_job_returns_a_job(): void
     {
         $this->assertInstanceOf(Job::class, Ionhour::registerJob('tok_123'));
@@ -50,7 +64,10 @@ final class ManagerTest extends TestCase
         $this->assertSame(self::BASE, config('ionhour.base_url'));
         $this->assertSame(10, config('ionhour.timeout'));
         $this->assertSame(3, config('ionhour.retries'));
-        $this->assertArrayNotHasKey('api_key', config('ionhour'));
+        // api_key exists only for slug mode; it is unset by default and is never
+        // sent on token pings (see PingTest::test_never_sends_an_authorization_header).
+        $this->assertNull(config('ionhour.api_key'));
+        $this->assertSame('https://api.ionhour.com/api', config('ionhour.api_base_url'));
     }
 
     public function test_config_is_publishable_under_its_tag(): void
